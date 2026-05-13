@@ -175,9 +175,9 @@ quality = load_quality_summary()
 
 with st.expander("Como os dados foram preparados"):
     st.write(
-        "A planilha original ja era organizada. O trabalho aqui foi preparar os dados "
-        "para uma leitura executiva confiavel: datas corretas, valores conferidos, "
-        "enderecos completos e registros repetidos revisados."
+        "A planilha original já estava organizada. O trabalho realizado foi preparar os dados "
+        "para uma leitura executiva confiável: datas padronizadas, valores conferidos, "
+        "endereços completos e registros repetidos revisados."
     )
     quality_cols = st.columns(4)
     quality_cols[0].metric("Registros recebidos", f"{quality['raw_rows']:,}")
@@ -186,9 +186,9 @@ with st.expander("Como os dados foram preparados"):
     quality_cols[3].metric("Registros repetidos removidos", f"{quality['business_duplicates']:,}")
     st.markdown(
         """
-        - As datas foram organizadas para permitir comparacoes por ano e por mes.
-        - Os valores de venda foram conferidos para garantir calculos consistentes.
-        - Alguns enderecos que estavam incompletos foram preenchidos.
+        - As datas foram organizadas para permitir comparações por ano e por mês.
+        - Os valores de venda foram conferidos para garantir cálculos consistentes.
+        - Alguns endereços que estavam incompletos foram preenchidos.
         - Foi calculado o número de dias entre a data do pedido e a data de envio.
         """
     )
@@ -241,14 +241,22 @@ last_year = yearly.iloc[-1]
 avg_year_sales = yearly["Sales"].mean()
 yearly["YoY"] = yearly["Sales"].pct_change()
 last_yoy = yearly["YoY"].dropna().iloc[-1] if yearly["YoY"].notna().any() else None
-last_yoy_text = "sem comparação anual disponível" if last_yoy is None else f"{pct(last_yoy)} em relação ao ano anterior"
+previous_year = yearly.iloc[-2] if len(yearly) > 1 else None
+last_yoy_text = (
+    "Não há comparação anual disponível porque a base possui apenas um ano analisado."
+    if last_yoy is None or previous_year is None
+    else (
+        f"A receita de {int(last_year['Year'])} teve variação de {pct(last_yoy)} em relação a "
+        f"{int(previous_year['Year'])}."
+    )
+)
 
 analysis_text(
     "Leitura executiva",
     [
         f"A análise anual mostra o comportamento macro das vendas antes de qualquer detalhamento por mês, categoria ou produto. No recorte analisado, houve {trend_text(first_year['Sales'], last_year['Sales'])} entre {int(first_year['Year'])} e {int(last_year['Year'])}.",
         f"O melhor resultado ocorreu em {int(best_year['Year'])}, com {money(best_year['Sales'])}. Esse ano concentra o maior volume financeiro da série.",
-        f"A leitura mais recente indica {last_yoy_text}. Esse indicador ajuda a diferenciar crescimento acumulado de uma melhora efetiva no último ano analisado.",
+        f"{last_yoy_text} Essa variação anual da receita ajuda a diferenciar o crescimento acumulado da série de uma melhora efetiva no último ano analisado.",
     ],
 )
 
@@ -555,11 +563,16 @@ most_consistent_product = year_count.index[0]
 peak_product_year = product_year.loc[product_year["Sales"].idxmax()]
 years_available = filtered["Year"].nunique()
 recurring_products = int((year_count > 1).sum())
+most_consistent_sales = filtered.loc[
+    filtered["Product Name"] == most_consistent_product, "Sales"
+].sum()
+most_consistent_share = most_consistent_sales / filtered["Sales"].sum()
+most_consistent_years = int(year_count.iloc[0])
 
 analysis_text(
     "Leitura executiva",
     [
-        f"Essa visão separa produtos com desempenho recorrente daqueles que aparecem apenas em momentos específicos. O produto mais consistente é {most_consistent_product}, presente entre os principais itens em {int(year_count.iloc[0])} de {years_available} ano(s) analisados.",
+        f"Essa visão separa produtos com desempenho recorrente daqueles que aparecem apenas em momentos específicos. O produto mais consistente é {most_consistent_product}, presente entre os principais itens em {most_consistent_years} de {years_available} ano(s) analisados, somando {money(most_consistent_sales)} no período, ou {pct(most_consistent_share)} da receita analisada.",
         f"O maior destaque isolado foi {peak_product_year['Product Name']} em {int(peak_product_year['Year'])}, com {money(peak_product_year['Sales'])}. Esse tipo de leitura ajuda a diferenciar produto estrutural de pico temporário.",
         f"No ranking analisado, {recurring_products} produto(s) aparecem em mais de um ano. Quanto maior essa recorrência, mais estável tende a ser a contribuição desses itens para o resultado.",
     ],
@@ -578,6 +591,9 @@ fig = px.bar(
 )
 fig.update_traces(textposition="outside", cliponaxis=False)
 fig = format_chart(fig, height=560)
+fig.update_xaxes(range=[0, product_year["Sales"].max() * 1.28])
+fig.update_yaxes(automargin=True)
+fig.update_layout(margin=dict(l=10, r=150, t=35, b=25))
 st.plotly_chart(fig, width="stretch")
 
 st.divider()
