@@ -7,9 +7,9 @@ import streamlit as st
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT_DIR))
+sys.path.insert(0, str(ROOT_DIR))
 
-from src.data import data_quality_summary, load_sales_data
+from src.data import load_sales_data
 from src.features import (
     filter_sales,
     kpis,
@@ -34,7 +34,34 @@ def load_data() -> pd.DataFrame:
 def load_quality_summary() -> dict[str, int]:
     raw = pd.read_csv(DATA_PATH)
     cleaned = load_sales_data(DATA_PATH)
-    return data_quality_summary(raw, cleaned)
+    order_dates = pd.to_datetime(raw["Order Date"], format="%d/%m/%Y", errors="coerce")
+    ship_dates = pd.to_datetime(raw["Ship Date"], format="%d/%m/%Y", errors="coerce")
+    sales = pd.to_numeric(raw["Sales"], errors="coerce")
+    duplicate_key = [
+        "Order ID",
+        "Order Date",
+        "Ship Date",
+        "Ship Mode",
+        "Customer ID",
+        "Product ID",
+        "Product Name",
+        "Sales",
+    ]
+
+    return {
+        "raw_rows": int(len(raw)),
+        "raw_columns": int(raw.shape[1]),
+        "processed_rows": int(len(cleaned)),
+        "processed_columns": int(cleaned.shape[1]),
+        "missing_postal_before": int(raw["Postal Code"].isna().sum()),
+        "missing_postal_after": int(cleaned["Postal Code"].isna().sum()),
+        "invalid_order_dates": int(order_dates.isna().sum()),
+        "invalid_ship_dates": int(ship_dates.isna().sum()),
+        "invalid_sales": int(sales.isna().sum()),
+        "non_positive_sales": int(sales.le(0).sum()),
+        "invalid_shipments": int(ship_dates.lt(order_dates).sum()),
+        "business_duplicates": int(raw.duplicated(subset=duplicate_key).sum()),
+    }
 
 
 def money(value: float) -> str:
