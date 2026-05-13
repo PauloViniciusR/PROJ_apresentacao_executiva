@@ -9,7 +9,7 @@ import streamlit as st
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
-from src.data import load_sales_data
+from src.data import data_quality_summary, load_sales_data
 from src.features import (
     filter_sales,
     kpis,
@@ -28,6 +28,13 @@ PALETTE = ["#2563eb", "#16a34a", "#f97316", "#7c3aed", "#0891b2", "#dc2626"]
 @st.cache_data
 def load_data() -> pd.DataFrame:
     return load_sales_data(DATA_PATH)
+
+
+@st.cache_data
+def load_quality_summary() -> dict[str, int]:
+    raw = pd.read_csv(DATA_PATH)
+    cleaned = load_sales_data(DATA_PATH)
+    return data_quality_summary(raw, cleaned)
 
 
 def money(value: float) -> str:
@@ -131,6 +138,27 @@ st.markdown(
 )
 
 df = load_data()
+quality = load_quality_summary()
+
+with st.expander("Tratamento aplicado ao dataset"):
+    st.write(
+        "Antes da analise, a base bruta passa por um pipeline reproduzivel de validacao, "
+        "limpeza e criacao de features. O dataset tratado tambem fica materializado em "
+        "`data/processed/superstore_sales_clean.csv`."
+    )
+    quality_cols = st.columns(4)
+    quality_cols[0].metric("Linhas no bruto", f"{quality['raw_rows']:,}")
+    quality_cols[1].metric("Linhas no tratado", f"{quality['processed_rows']:,}")
+    quality_cols[2].metric("CEPs corrigidos", f"{quality['missing_postal_before'] - quality['missing_postal_after']:,}")
+    quality_cols[3].metric("Duplicidades removidas", f"{quality['business_duplicates']:,}")
+    st.markdown(
+        """
+        - Datas convertidas para tipo temporal e usadas para criar ano, mes e periodo mensal.
+        - Campos textuais padronizados e vendas convertidas para valor numerico.
+        - `Postal Code` tratado como texto de cinco caracteres para preservar zeros a esquerda.
+        - Feature `Ship Days` criada para medir prazo entre pedido e envio.
+        """
+    )
 
 with st.sidebar:
     st.header("Filtros")

@@ -17,9 +17,11 @@ Responder, de forma visual e reproduzivel:
 .
 ├── app/                     # Dashboard Streamlit
 ├── data/raw/                # Dataset original versionado
+├── data/processed/          # Dataset tratado e relatorio de qualidade
 ├── docs/                    # Notas do projeto
 ├── notebooks/               # Analise exploratoria
 ├── reports/figures/         # Figuras exportadas pelo notebook
+├── scripts/                 # Rotinas reproduziveis de processamento
 ├── src/                     # Pipeline reutilizavel de dados e features
 ├── README.md
 └── requirements.txt
@@ -34,6 +36,12 @@ pip install -r requirements.txt
 streamlit run app/app.py
 ```
 
+Para reconstruir a camada tratada:
+
+```bash
+python scripts/build_processed_dataset.py
+```
+
 ## Deploy no Streamlit Community Cloud
 
 1. Faça push deste repositorio para o GitHub.
@@ -45,13 +53,23 @@ streamlit run app/app.py
 ## Pipeline
 
 1. **Extracao**: leitura do CSV em `data/raw/superstore_sales.csv`.
-2. **Tratamento**: conversao de datas, validacao de colunas e padronizacao de tipos.
-3. **Features**: criacao de ano, mes e periodo mensal para agregacoes.
-4. **Visualizacao**: notebook para analise exploratoria e Streamlit para consumo interativo.
+2. **Tratamento**: conversao de datas, validacao de colunas, padronizacao de textos, tratamento de CEPs e remocao de duplicidades comerciais.
+3. **Features**: criacao de ano, mes, periodo mensal e prazo de envio.
+4. **Persistencia**: geracao de `data/processed/superstore_sales_clean.csv` e `data/processed/DATASET.md`.
+5. **Visualizacao**: notebook para analise exploratoria e Streamlit para consumo interativo.
+
+## Qualidade dos dados
+
+- Base bruta: 9.800 linhas e 18 colunas.
+- Base tratada: 9.799 linhas e 24 colunas.
+- 1 duplicidade comercial removida.
+- 11 CEPs ausentes corrigidos para Burlington, Vermont.
+- Datas de pedido e envio validadas, sem registros invalidos.
+- Vendas convertidas para numerico, sem valores nulos, zerados ou negativos.
 
 ## Principais resultados
 
-- Base com 9.800 linhas e 18 colunas.
+- Base tratada com 9.799 linhas e 24 colunas.
 - Receita total historica de aproximadamente US$ 2,26 milhoes.
 - Categorias analisadas: Office Supplies, Furniture e Technology.
 - O dashboard permite filtrar por ano, regiao e categoria.
