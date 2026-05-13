@@ -11,7 +11,6 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from src.data import load_sales_data
 from src.features import (
-    filter_sales,
     kpis,
     products_by_year,
     sales_by_category,
@@ -22,18 +21,25 @@ from src.features import (
 
 
 DATA_PATH = ROOT_DIR / "data" / "raw" / "superstore_sales.csv"
+PROCESSED_DATA_PATH = ROOT_DIR / "data" / "processed" / "superstore_sales_clean.csv"
 PALETTE = ["#2563eb", "#16a34a", "#f97316", "#7c3aed", "#0891b2", "#dc2626"]
 
 
 @st.cache_data
 def load_data() -> pd.DataFrame:
+    if PROCESSED_DATA_PATH.exists():
+        df = pd.read_csv(PROCESSED_DATA_PATH, dtype={"Postal Code": "string"})
+        for column in ["Order Date", "Ship Date", "Year Month"]:
+            df[column] = pd.to_datetime(df[column], errors="coerce")
+        return df
+
     return load_sales_data(DATA_PATH)
 
 
 @st.cache_data
 def load_quality_summary() -> dict[str, int]:
     raw = pd.read_csv(DATA_PATH)
-    cleaned = load_sales_data(DATA_PATH)
+    cleaned = load_data()
     order_dates = pd.to_datetime(raw["Order Date"], format="%d/%m/%Y", errors="coerce")
     ship_dates = pd.to_datetime(raw["Ship Date"], format="%d/%m/%Y", errors="coerce")
     sales = pd.to_numeric(raw["Sales"], errors="coerce")
@@ -88,7 +94,7 @@ def section_header(question: str, concept: str) -> None:
 def format_chart(fig, height: int = 460):
     fig.update_layout(
         height=height,
-        margin=dict(l=10, r=10, t=30, b=10),
+        margin=dict(l=10, r=70, t=30, b=25),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend_title_text="",
@@ -167,48 +173,29 @@ st.markdown(
 df = load_data()
 quality = load_quality_summary()
 
-with st.expander("Tratamento aplicado ao dataset"):
+with st.expander("Como os dados foram preparados"):
     st.write(
-        "Antes da analise, a base bruta passa por um pipeline reproduzivel de validacao, "
-        "limpeza e criacao de features. O dataset tratado tambem fica materializado em "
-        "`data/processed/superstore_sales_clean.csv`."
+        "A planilha original ja era organizada. O trabalho aqui foi preparar os dados "
+        "para uma leitura executiva confiavel: datas corretas, valores conferidos, "
+        "enderecos completos e registros repetidos revisados."
     )
     quality_cols = st.columns(4)
-    quality_cols[0].metric("Linhas no bruto", f"{quality['raw_rows']:,}")
-    quality_cols[1].metric("Linhas no tratado", f"{quality['processed_rows']:,}")
-    quality_cols[2].metric("CEPs corrigidos", f"{quality['missing_postal_before'] - quality['missing_postal_after']:,}")
-    quality_cols[3].metric("Duplicidades removidas", f"{quality['business_duplicates']:,}")
+    quality_cols[0].metric("Registros recebidos", f"{quality['raw_rows']:,}")
+    quality_cols[1].metric("Registros usados", f"{quality['processed_rows']:,}")
+    quality_cols[2].metric("Endereços completados", f"{quality['missing_postal_before'] - quality['missing_postal_after']:,}")
+    quality_cols[3].metric("Registros repetidos removidos", f"{quality['business_duplicates']:,}")
     st.markdown(
         """
-        - Datas convertidas para tipo temporal e usadas para criar ano, mes e periodo mensal.
-        - Campos textuais padronizados e vendas convertidas para valor numerico.
-        - `Postal Code` tratado como texto de cinco caracteres para preservar zeros a esquerda.
-        - Feature `Ship Days` criada para medir prazo entre pedido e envio.
+        - As datas foram organizadas para permitir comparacoes por ano e por mes.
+        - Os valores de venda foram conferidos para garantir calculos consistentes.
+        - Alguns enderecos que estavam incompletos foram preenchidos.
+        - Foi calculado o número de dias entre a data do pedido e a data de envio.
         """
     )
 
-with st.sidebar:
-    st.header("Filtros")
-    years = st.multiselect(
-        "Ano",
-        sorted(df["Year"].unique()),
-        default=sorted(df["Year"].unique()),
-    )
-    regions = st.multiselect(
-        "Região",
-        sorted(df["Region"].unique()),
-        default=sorted(df["Region"].unique()),
-    )
-    categories = st.multiselect(
-        "Categoria",
-        sorted(df["Category"].unique()),
-        default=sorted(df["Category"].unique()),
-    )
-    top_n = st.slider("Quantidade de produtos no ranking", 5, 20, 10)
-
-filtered = filter_sales(df, years=years, regions=regions, categories=categories)
+filtered = df.copy()
 if filtered.empty:
-    st.warning("Nenhum registro encontrado para os filtros selecionados.")
+    st.warning("Nenhum registro encontrado na base analisada.")
     st.stop()
 
 summary = kpis(filtered)
@@ -219,7 +206,7 @@ products = filtered["Product Name"].nunique()
 items_per_order = summary["items"] / summary["orders"] if summary["orders"] else 0
 sales_per_item = summary["total_sales"] / summary["items"] if summary["items"] else 0
 
-st.caption(f"Período filtrado: {date_min} a {date_max}")
+st.caption(f"Período analisado: {date_min} a {date_max}")
 metric_cols = st.columns(4)
 metric_cols[0].metric("Receita total", money(summary["total_sales"]))
 metric_cols[1].metric("Pedidos únicos", f"{summary['orders']:,}")
@@ -230,8 +217,8 @@ st.markdown("#### Como ler os indicadores principais")
 st.markdown(
     f"""
     <div class="kpi-reading">
-        <p><strong>Receita total:</strong> soma de todas as vendas dentro dos filtros aplicados. Neste recorte, representa {money(summary["total_sales"])} em volume financeiro.</p>
-        <p><strong>Pedidos únicos:</strong> quantidade de pedidos distintos, usada para medir volume de transações. A base filtrada reúne {summary["orders"]:,} pedidos de {customers:,} clientes.</p>
+        <p><strong>Receita total:</strong> soma de todas as vendas da base analisada. Neste recorte, representa {money(summary["total_sales"])} em volume financeiro.</p>
+        <p><strong>Pedidos únicos:</strong> quantidade de pedidos distintos, usada para medir volume de transações. A base analisada reúne {summary["orders"]:,} pedidos de {customers:,} clientes.</p>
         <p><strong>Itens vendidos:</strong> total de linhas de venda registradas. Em média, cada pedido contém {number(items_per_order)} item(ns), considerando {summary["items"]:,} itens vendidos.</p>
         <p><strong>Ticket médio:</strong> receita média por pedido. O valor atual é {money(summary["avg_order"])}, enquanto a venda média por item é {money(sales_per_item)} em um universo de {products:,} produtos distintos.</p>
     </div>
@@ -259,7 +246,7 @@ last_yoy_text = "sem comparação anual disponível" if last_yoy is None else f"
 analysis_text(
     "Leitura executiva",
     [
-        f"A análise anual mostra o comportamento macro das vendas antes de qualquer detalhamento por mês, categoria ou produto. No recorte filtrado, houve {trend_text(first_year['Sales'], last_year['Sales'])} entre {int(first_year['Year'])} e {int(last_year['Year'])}.",
+        f"A análise anual mostra o comportamento macro das vendas antes de qualquer detalhamento por mês, categoria ou produto. No recorte analisado, houve {trend_text(first_year['Sales'], last_year['Sales'])} entre {int(first_year['Year'])} e {int(last_year['Year'])}.",
         f"O melhor resultado ocorreu em {int(best_year['Year'])}, com {money(best_year['Sales'])}. Esse ano concentra o maior volume financeiro da série.",
         f"A leitura mais recente indica {last_yoy_text}. Esse indicador ajuda a diferenciar crescimento acumulado de uma melhora efetiva no último ano analisado.",
     ],
@@ -315,7 +302,7 @@ analysis_text(
     [
         f"A série mensal mostra que as vendas não ficam distribuídas de forma uniforme ao longo do tempo. Existem meses de aceleração, principalmente no fim do ano, que puxam o resultado para cima.",
         f"O maior pico aparece em {peak_month['Periodo']}, com aproximadamente {short_money(peak_month['Sales'])}. Para facilitar a leitura, esse ponto foi destacado diretamente no gráfico.",
-        f"Setembro, outubro, novembro e dezembro formam uma janela importante para acompanhamento comercial. Dentro dos filtros atuais, esses meses registram média próxima de {short_money(final_month_avg)}.",
+        f"Setembro, outubro, novembro e dezembro formam uma janela importante para acompanhamento comercial. Na base analisada, esses meses registram média próxima de {short_money(final_month_avg)}.",
     ],
 )
 
@@ -444,14 +431,14 @@ with tab_season:
     st.plotly_chart(fig, width="stretch")
     st.caption(
         "Esta visão resume a sazonalidade: cada barra representa a média daquele mês "
-        "ao longo dos anos filtrados."
+        "ao longo dos anos analisados."
     )
     st.markdown(
         """
         <p class="small-note">
         A sazonalidade responde quais meses costumam vender mais, independentemente do ano.
         Por exemplo: a barra de novembro representa a média de todos os novembros disponíveis
-        no recorte filtrado.
+        no recorte analisado.
         </p>
         """,
         unsafe_allow_html=True,
@@ -466,13 +453,6 @@ section_header(
 category_sales = sales_by_category(filtered)
 category_sales["Share"] = category_sales["Sales"] / category_sales["Sales"].sum()
 category_sales["Sales Label"] = category_sales["Sales"].map(money)
-leader_category = category_sales.iloc[0]
-second_category = category_sales.iloc[1] if len(category_sales) > 1 else None
-leader_gap = (
-    leader_category["Share"] - second_category["Share"]
-    if second_category is not None
-    else leader_category["Share"]
-)
 category_orders = (
     filtered.groupby("Category")["Order ID"]
     .nunique()
@@ -481,19 +461,27 @@ category_orders = (
 )
 category_sales = category_sales.merge(category_orders, on="Category", how="left")
 category_sales["Avg Order"] = category_sales["Sales"] / category_sales["Orders"]
+category_sales = category_sales.sort_values("Sales", ascending=False).reset_index(drop=True)
 leader_category = category_sales.iloc[0]
+second_category = category_sales.iloc[1] if len(category_sales) > 1 else None
+category_comparison_text = (
+    f"Na sequência aparecem {' e '.join(category_sales['Category'].iloc[1:].tolist())}, formando a composição da receita por linha de produto."
+    if second_category is not None
+    else "Como apenas uma categoria está selecionada, esta leitura mostra a contribuição total dessa linha no recorte atual."
+)
+category_plot = category_sales.sort_values("Sales", ascending=True)
 
 analysis_text(
     "Leitura executiva",
     [
-        f"A categoria com maior participação é {leader_category['Category']}, com {money(leader_category['Sales'])} em vendas no recorte filtrado.",
-        f"A segunda categoria fica próxima o suficiente para mostrar que o faturamento não depende de uma única linha, mas a liderança ainda indica onde está o maior peso comercial.",
-        f"Além do volume total, a categoria líder apresenta receita média de {money(leader_category['Avg Order'])} por pedido em que aparece. Isso ajuda a avaliar se a liderança vem apenas de quantidade ou também de valor por transação.",
+        f"No ranking por receita, {leader_category['Category']} aparece em primeiro lugar, com {money(leader_category['Sales'])}, equivalente a {pct(leader_category['Share'])} das vendas analisadas.",
+        category_comparison_text,
+        f"A categoria líder aparece em {int(leader_category['Orders']):,} pedidos e gera, em média, {money(leader_category['Avg Order'])} por pedido. Isso indica quanto cada pedido com essa categoria costuma contribuir para a receita.",
     ],
 )
 
 fig = px.bar(
-    category_sales.sort_values("Sales"),
+    category_plot,
     x="Sales",
     y="Category",
     orientation="h",
@@ -505,6 +493,10 @@ fig = px.bar(
 fig.update_traces(textposition="outside", cliponaxis=False)
 fig = format_chart(fig, height=390)
 fig.update_layout(showlegend=False)
+fig.update_yaxes(
+    categoryorder="array",
+    categoryarray=category_plot["Category"].tolist(),
+)
 st.plotly_chart(fig, width="stretch")
 
 st.divider()
@@ -513,6 +505,7 @@ section_header(
     "4. Quais produtos mais puxam o resultado?",
     "Objetivo: identificar os itens que mais contribuem para o faturamento e avaliar concentração de receita no portfólio.",
 )
+top_n = st.slider("Quantidade de produtos no ranking", 5, 20, 10)
 product_rank = top_products(filtered, limit=top_n)
 product_rank["Share"] = product_rank["Sales"] / filtered["Sales"].sum()
 product_rank["Sales Label"] = product_rank["Sales"].map(money)
@@ -529,7 +522,8 @@ analysis_text(
     "Leitura executiva",
     [
         f"O item com maior faturamento é {top_product['Product Name']}, somando {money(top_product['Sales'])}. Esse resultado mostra qual produto mais puxou a receita no recorte selecionado.",
-        f"O ranking ajuda a enxergar quais produtos merecem atenção em disponibilidade, precificação e ações comerciais, especialmente quando poucos itens aparecem muito acima dos demais.",
+        f"Os {len(product_rank)} produtos exibidos no ranking representam {pct(top_share)} da receita analisada, dentro de um total de {product_universe:,} produtos diferentes. Essa leitura mostra se a venda está concentrada em poucos itens ou distribuída pelo portfólio.",
+        f"Somente os 3 primeiros produtos respondem por {pct(top_3_share)} da receita analisada. Se esse percentual sobe, a operação fica mais dependente de poucos itens; se cai, a receita está mais espalhada.",
         f"O produto líder apareceu em {top_product_orders:,} pedido(s), com média de {money(top_product_avg_order)} por pedido.",
     ],
 )
@@ -565,7 +559,7 @@ recurring_products = int((year_count > 1).sum())
 analysis_text(
     "Leitura executiva",
     [
-        f"Essa visão separa produtos com desempenho recorrente daqueles que aparecem apenas em momentos específicos. O produto mais consistente é {most_consistent_product}, presente entre os principais itens em {int(year_count.iloc[0])} de {years_available} ano(s) filtrados.",
+        f"Essa visão separa produtos com desempenho recorrente daqueles que aparecem apenas em momentos específicos. O produto mais consistente é {most_consistent_product}, presente entre os principais itens em {int(year_count.iloc[0])} de {years_available} ano(s) analisados.",
         f"O maior destaque isolado foi {peak_product_year['Product Name']} em {int(peak_product_year['Year'])}, com {money(peak_product_year['Sales'])}. Esse tipo de leitura ajuda a diferenciar produto estrutural de pico temporário.",
         f"No ranking analisado, {recurring_products} produto(s) aparecem em mais de um ano. Quanto maior essa recorrência, mais estável tende a ser a contribuição desses itens para o resultado.",
     ],
